@@ -12,7 +12,8 @@ import {
   deleteDoc,
   doc,
   query,
-  orderBy
+  orderBy,
+  updateDoc
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 import {
   getAuth,
@@ -55,6 +56,33 @@ function updateUserArea() {
     const welcome = document.createElement("span");
     welcome.textContent = (currentUser.displayName || "선생님") + "님 환영합니다! ";
 
+    // 전체 메모에 AI 피드백 남기기 버튼
+    const aiAllBtn = document.createElement("button");
+    aiAllBtn.className = "ai-batch-btn";
+    aiAllBtn.textContent = "✨ 전체 메모 AI 피드백";
+    aiAllBtn.addEventListener("click", async function () {
+      aiAllBtn.disabled = true;
+      aiAllBtn.textContent = "AI 코멘트 생성 중...";
+      try {
+        const memos = await loadMemos();
+        const targets = memos.filter(m => !m.aiComment);
+        if (targets.length === 0) {
+          alert("모든 메모에 이미 AI 코멘트가 작성되어 있습니다.");
+          return;
+        }
+
+        for (const memo of targets) {
+          await generateAiComment(memo.id, memo.text);
+        }
+        alert(`총 ${targets.length}개의 메모에 AI 코멘트가 작성되었습니다!`);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        aiAllBtn.disabled = false;
+        aiAllBtn.textContent = "✨ 전체 메모 AI 피드백";
+      }
+    });
+
     const logoutBtn = document.createElement("button");
     logoutBtn.textContent = "로그아웃";
     logoutBtn.addEventListener("click", async function () {
@@ -67,6 +95,7 @@ function updateUserArea() {
     });
 
     userArea.appendChild(welcome);
+    userArea.appendChild(aiAllBtn);
     userArea.appendChild(logoutBtn);
   } else {
     const info = document.createElement("span");
@@ -160,6 +189,41 @@ async function deleteMemo(id) {
 
 
 // ===================================================
+// AI 코멘트 생성 (Gemini API - Vercel 서버리스 함수 호출)
+// ===================================================
+
+async function generateAiComment(memoId, text) {
+  try {
+    const response = await fetch("/api/gemini", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ text: text })
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || "AI 코멘트를 가져오지 못했습니다.");
+    }
+
+    const data = await response.json();
+    const comment = data.comment;
+
+    // Firestore 해당 메모 문서에 AI 코멘트 필드 추가/수정
+    await updateDoc(doc(db, "memos", memoId), {
+      aiComment: comment
+    });
+
+    await render();
+  } catch (err) {
+    console.error("AI 코멘트 생성 실패:", err);
+    alert("AI 코멘트 생성 실패: " + err.message);
+  }
+}
+
+
+// ===================================================
 // 화면 그리기
 // ===================================================
 
@@ -190,6 +254,7 @@ function makeMemo(memo) {
   const canDelete = currentUser && (!memo.uid || memo.uid === currentUser.uid);
   if (canDelete) {
     const del = document.createElement("button");
+    del.className = "del-btn";
     del.textContent = "×";
     del.addEventListener("click", async function () {
       try {
@@ -215,6 +280,25 @@ function makeMemo(memo) {
     authorDiv.style.textAlign = "right";
     authorDiv.textContent = "- " + memo.author;
     div.appendChild(authorDiv);
+  }
+
+  // AI 코멘트 표시
+  if (memo.aiComment) {
+    const aiBox = document.createElement("div");
+    aiBox.className = "ai-box";
+    aiBox.textContent = "🤖 AI 보조교사: " + memo.aiComment;
+    div.appendChild(aiBox);
+  } else if (currentUser) {
+    // 아직 코멘트가 없고 교사(로그인)인 경우 개별 생성 버튼 제공
+    const aiBtn = document.createElement("button");
+    aiBtn.className = "ai-btn";
+    aiBtn.textContent = "✨ AI 코멘트";
+    aiBtn.addEventListener("click", async function () {
+      aiBtn.disabled = true;
+      aiBtn.textContent = "작성 중...";
+      await generateAiComment(memo.id, memo.text);
+    });
+    div.appendChild(aiBtn);
   }
 
   return div;
