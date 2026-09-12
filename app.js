@@ -12,8 +12,7 @@ import {
   deleteDoc,
   doc,
   query,
-  orderBy,
-  onSnapshot
+  orderBy
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 // Firebase 설정
@@ -71,11 +70,15 @@ async function deleteMemo(id) {
 // 화면 그리기
 // ===================================================
 
+let renderCount = 0;
 async function render() {
+  const currentRender = ++renderCount;
+  const memos = await loadMemos();
+  if (currentRender !== renderCount) return;
+
   const wall = document.getElementById("wall");
   wall.innerHTML = "";
 
-  const memos = await loadMemos();
   memos.forEach(function (memo) {
     wall.appendChild(makeMemo(memo));
   });
@@ -122,12 +125,6 @@ input.addEventListener("keydown", async function (e) {
   }
 });
 
-
-// 실시간 데이터 변경 감지 (다른 창이나 사용자의 변경 사항도 자동 반영)
-const memosQuery = query(collection(db, "memos"), orderBy("createdAt"));
-onSnapshot(memosQuery, function () {
-  render();
-});
 
 // 첫 화면 그리기
 render();
