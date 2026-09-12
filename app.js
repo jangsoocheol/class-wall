@@ -53,16 +53,36 @@ async function loadMemos() {
 // 메모를 새로 씁니다.
 // 백엔드 2: 여기에 "누가 썼는지"(uid)를 함께 저장하게 됩니다.
 async function addMemo(text) {
-  await addDoc(collection(db, "memos"), {
-    text: text,
-    createdAt: Date.now()
-  });
+  try {
+    await addDoc(collection(db, "memos"), {
+      text: text,
+      createdAt: Date.now()
+    });
+  } catch (err) {
+    console.error("메모 저장 실패:", err);
+    if (err.code === "permission-denied" || (err.message && err.message.includes("permission"))) {
+      alert("메모 저장 실패: Firestore 쓰기 권한이 거부되었습니다.\nFirebase 콘솔의 Firestore Database > '규칙' 탭에서 allow read, write: if true; 로 설정되어 있는지 확인해 주세요.");
+    } else {
+      alert("메모 저장 실패: " + (err.message || err));
+    }
+    throw err;
+  }
 }
 
 // 메모를 지웁니다.
 // 백엔드 2: 지금은 누구든 남의 메모를 지울 수 있습니다. 이걸 막는 것이 과제입니다.
 async function deleteMemo(id) {
-  await deleteDoc(doc(db, "memos", id));
+  try {
+    await deleteDoc(doc(db, "memos", id));
+  } catch (err) {
+    console.error("메모 삭제 실패:", err);
+    if (err.code === "permission-denied" || (err.message && err.message.includes("permission"))) {
+      alert("메모 삭제 실패: Firestore 삭제 권한이 거부되었습니다.\nFirebase 콘솔의 Firestore 규칙을 확인해 주세요.");
+    } else {
+      alert("메모 삭제 실패: " + (err.message || err));
+    }
+    throw err;
+  }
 }
 
 
@@ -73,15 +93,19 @@ async function deleteMemo(id) {
 let renderCount = 0;
 async function render() {
   const currentRender = ++renderCount;
-  const memos = await loadMemos();
-  if (currentRender !== renderCount) return;
+  try {
+    const memos = await loadMemos();
+    if (currentRender !== renderCount) return;
 
-  const wall = document.getElementById("wall");
-  wall.innerHTML = "";
+    const wall = document.getElementById("wall");
+    wall.innerHTML = "";
 
-  memos.forEach(function (memo) {
-    wall.appendChild(makeMemo(memo));
-  });
+    memos.forEach(function (memo) {
+      wall.appendChild(makeMemo(memo));
+    });
+  } catch (err) {
+    console.error("메모 불러오기 실패:", err);
+  }
 }
 
 // 메모 한 장 만들기
@@ -92,8 +116,12 @@ function makeMemo(memo) {
   const del = document.createElement("button");
   del.textContent = "×";
   del.addEventListener("click", async function () {
-    await deleteMemo(memo.id);
-    await render();
+    try {
+      await deleteMemo(memo.id);
+      await render();
+    } catch (err) {
+      // 오류는 deleteMemo에서 처리
+    }
   });
   div.appendChild(del);
 
@@ -119,9 +147,13 @@ input.addEventListener("keydown", async function (e) {
     const text = input.value.trim();
     if (text === "") return;
 
-    await addMemo(text);
-    input.value = "";
-    await render();
+    try {
+      await addMemo(text);
+      input.value = "";
+      await render();
+    } catch (err) {
+      // 오류는 addMemo에서 처리
+    }
   }
 });
 
